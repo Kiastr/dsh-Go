@@ -89,6 +89,7 @@ PhoneCore.runCall() → PowerPolicy.toolBudgetMs(base, heavy, enabled)  ← 硬�
 | `app/lib/ui/settings/performance_page.dart` | 改 | 独立设置分组 + **app 内引导** |
 | `app/lib/ui/settings/index/spots.dart` | 改 | 注册 `Spots.powerStrategy`（仓库要求每个设置行都在索引里） |
 | `app/test/performance/performance_ui_test.dart` | 改 | 页面变高后的窗口高度与 pump 时序 |
+| `app/test/performance/goldens/performance_{dark,light}_{en,zh}.png` | 改 | 多一组后重出的基准图（由仓库 `goldens.yml` 渲染，勿手改） |
 | `app/lib/l10n/parts/performance_zh.arb` / `_en.arb` | 改 | 6 个文案真源（含 1 个搜索关键词） |
 | `app/lib/l10n/app_zh.arb` / `app_en.arb` | 生成物 | 由生成器产出 |
 | `app/lib/l10n/gen/app_localizations*.dart` | 生成物 | 由 `flutter gen-l10n` 产出 |
@@ -116,22 +117,22 @@ CI 的 Flutter shard 0 会执行 `python3 tool/l10n_merge.py` 后 `git diff --ex
 | 项 | 命令 / 方法 | 结果 |
 |---|---|---|
 | 决策层单测 | `K2JVMCompiler` 编译 `PowerPolicy.kt` + `PowerPolicyTest.kt` → `JUnitCore` | ✅ `OK (15 tests)`，含 31,104 条状态组合穷举 |
-| CI（GitHub Actions） | `Ci` workflow_dispatch，8 个 job | 🟡 见下表：analyze / l10n / Android JVM / Dart / Generated files 全过；Flutter 测试曝出 4 类真实回归，已修，待重跑 |
+| CI（GitHub Actions） | `CI` workflow，PR #1 head `3c5b2c7`，run [43703041651](https://github.com/Kiastr/dsh-Go/actions/runs/43703041651) | ✅ **全绿**：`changes` / `Generated files, tooling, SDK, web` / `Flutter 0` / `Flutter 1` / `Flutter 2` / `Android JVM` / `CI OK` = success（`Runtime and bridge`、`Dart packages` 由 `changes` 过滤跳过） |
 | Kotlin 语法解析 | `K2JVMCompiler` 编译 3 个改动文件（无 Android SDK） | ✅ 693 条诊断中 647 条 `unresolved reference`、46 条连锁类型推断，**0 条语法错误** |
 | l10n 合法性 | `python3 app/tool/l10n_merge.py --check` | ✅ `70 parts, 7758 keys`（基线 7752，+6） |
 | 生成器闭环 | 干净基线 `--no-gen` 重现远程 `app_*.arb`；改后 parts `--no-gen` 重现交付物 | ✅ 两次均**逐字节一致** |
-| gen 模板复现 | 用反推模板重建现有 22 个 performance getter | ✅ abstract / en / zh 三文件**逐字节 MATCH**；新增 7 个按同规则插入，diff 仅新增、无删除 |
+| gen 模板复现 | 用反推模板重建现有 22 个 performance getter | ✅ abstract / en / zh 三文件**逐字节 MATCH**；新增 6 个按同规则插入，diff 仅新增、无删除 |
+| golden 基准图 | 仓库自带 `.github/workflows/goldens.yml`（`workflow_dispatch`，`paths=test/performance/performance_golden_test.dart`） | ✅ run [43702722242](https://github.com/Kiastr/dsh-Go/actions/runs/43702722242) `success`，artifact `golden-updates-7d13187`（4 张 PNG）重出后目视核对中英 × 明暗四种组合，布局正常无溢出 |
 | 静态一致性 | key 对齐、调用点唯一、括号平衡、getter 唯一、文案与 parts 一致、凭据扫描 | ✅ 全部通过 |
 | 敏感信息自检 | 扫描全部交付物中的 PAT / Bearer 模式 | ✅ 0 命中；凭据仅存于本地临时文件，未进入仓库 |
 | `guide_sync.py --check` | 副本不完整导致 `missing SKILL.md` | ⚠️ 与本次改动无关（未触碰 `docs/guide/`），CI 在完整仓库中运行 |
 
 **未运行 / 未覆盖（诚实边界）**
 
-- ✅ `flutter analyze` 与 `gen-l10n` 一致性：**已由 CI 的 Flutter shard 0 验证通过**（`Analyze, and generated localization matches its source` = success），证明手工复现的 `gen/*.dart` 与真实生成器逐字节一致。
-- ❌ `flutter test`：首轮 CI 曝出 4 类回归（320dp 溢出、fluid 时序、索引未注册、golden 变旧），已按上表修复；仍需在 CI 上复跑确认。
-- ❌ 本地 `flutter analyze` / `flutter test`：沙箱无 Flutter SDK，内置 Dart 2.17 与项目 Dart 3 语法不匹配。
+- ✅ `flutter analyze` 与 `gen-l10n` 一致性：**由 CI 的 Flutter 0 验证通过**（`Analyze, and generated localization matches its source` = success），证明手工复现的 `gen/*.dart` 与真实 `flutter gen-l10n` 输出逐字节一致。
+- ✅ `flutter test`：**CI 三个 shard 全 success**。首轮曝出的 4 类回归已全部修掉并复跑确认——golden 变旧（重出 4 张基准图）、320dp/2.0x 溢出（分组压成单行 + 抬高测试窗口）、fluid 时序（`ensureVisible` 后补 `pumpAndSettle`）、设置索引未注册（新增 `Spots.powerStrategy`）。
+- ❌ 本地 `flutter analyze` / `flutter test`：沙箱无 Flutter SDK，内置 Dart 2.17 与项目 Dart 3 语法不匹配；上述两项只在 CI 上跑过。
 - ❌ APK 构建、真机、`batterystats` 功耗实测、端到端功能验证：沙箱无 Android SDK / NDK / 设备。
-- ❌ `git diff --exit-code -- lib/l10n` 的权威校验由 CI 完成；本地是用已验证模板复现 + 生成器闭环逼近。
 - ❌ 攒块队列、连线恢复 flush、引擎侧读取 `DSH_POWER_*` 的提示模板：尚未实现，**开关打开后这些不会生效**。
 
 ---
