@@ -10046,6 +10046,24 @@ class L10nZh extends L10n {
   String get searchKwRefreshRate => '刷新率 高刷 120Hz 90Hz 流畅';
 
   @override
+  String get searchKwPowerStrategy => '省电 省电策略 耗电 电量 续航 工具预算';
+
+  @override
+  String get powerStrategyTitle => '策略化省电';
+
+  @override
+  String get powerStrategySwitch => '启用省电策略';
+
+  @override
+  String get powerStrategyHint => '只收紧重工具预算，攒块队列尚未接入';
+
+  @override
+  String get powerStrategyStatusOn => '已开启：重工具预算上限 30 秒';
+
+  @override
+  String get powerStrategyFooter => '不改确认方式、交还用户与应用名单；切换后需重启本机引擎生效。';
+
+  @override
   String get petActionSending => '正在发送…';
 
   @override

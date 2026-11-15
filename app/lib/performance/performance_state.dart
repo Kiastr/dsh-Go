@@ -107,6 +107,9 @@ class PerformancePrefsController extends Notifier<PerformancePrefs> {
   static const animationsKey = 'performance.animations';
   static const fluidKey = 'performance.fluid';
   static const refreshRateKey = 'performance.refresh_rate';
+  /// 与原生 PerformancePolicy.POWER_STRATEGY 对齐：FlutterSharedPreferences 会加 `flutter.` 前缀，
+  /// 原生侧读的是 `flutter.performance.power_strategy`，两条链路共用同一个布尔值。
+  static const powerStrategyKey = 'performance.power_strategy';
   late Future<void> ready;
 
   @override
@@ -125,6 +128,7 @@ class PerformancePrefsController extends Notifier<PerformancePrefs> {
         animations: prefs.getBool(animationsKey),
         fluid: prefs.getBool(fluidKey),
         refreshRate: RefreshRateMode.values.asNameMap()[prefs.getString(refreshRateKey)] ?? RefreshRateMode.auto,
+        powerStrategy: prefs.getBool(powerStrategyKey) ?? false,
         loaded: true,
       );
     } catch (_) {
@@ -154,6 +158,8 @@ class PerformancePrefsController extends Notifier<PerformancePrefs> {
   Future<void> setFluid(bool value) => _save((s) => s.copyWith(fluid: value), (p) => p.setBool(fluidKey, value));
   Future<void> setRefreshRate(RefreshRateMode mode) =>
       _save((s) => s.copyWith(refreshRate: mode), (p) => p.setString(refreshRateKey, mode.name));
+  Future<void> setPowerStrategy(bool value) =>
+      _save((s) => s.copyWith(powerStrategy: value), (p) => p.setBool(powerStrategyKey, value));
   Future<void> resetEffects() => _save((s) => s.copyWith(resetEffects: true), (p) async {
     await p.remove(blurKey);
     await p.remove(animationsKey);
@@ -186,6 +192,7 @@ Map<String, Object?> performanceDiagnostics(Ref ref) {
       'animationsOverride': prefs.animations,
       'fluidOverride': prefs.fluid,
       'refreshRate': prefs.refreshRate.name,
+      'powerStrategy': prefs.powerStrategy,
     },
     'defaults': ref.read(performanceDefaultsProvider).toMap(),
   };

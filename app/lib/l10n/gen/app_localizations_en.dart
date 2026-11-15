@@ -10575,6 +10575,25 @@ class L10nEn extends L10n {
   String get searchKwRefreshRate => 'refresh rate high refresh 120Hz 90Hz smooth';
 
   @override
+  String get searchKwPowerStrategy => 'power saver power saving battery drain endurance tool budget';
+
+  @override
+  String get powerStrategyTitle => 'Power strategy';
+
+  @override
+  String get powerStrategySwitch => 'Enable power strategy';
+
+  @override
+  String get powerStrategyHint => 'Only caps heavy tool budgets; batching is not wired yet';
+
+  @override
+  String get powerStrategyStatusOn => 'On: heavy tools are capped at 30s';
+
+  @override
+  String get powerStrategyFooter =>
+      'Confirmation, hand-back and app lists stay as they are. Restart the local engine after switching.';
+
+  @override
   String get petActionSending => 'Sending…';
 
   @override

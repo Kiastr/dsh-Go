@@ -9,6 +9,8 @@ object PerformancePolicy {
     private const val PREFS = "FlutterSharedPreferences"
     private const val MODE = "flutter.performance.mode"
     private const val AUTO_START = "flutter.auto_start_local"
+    /** 设置 › 性能 › 策略化省电 的总开关（Dart 侧 key 为 performance.power_strategy）。 */
+    private const val POWER_STRATEGY = "flutter.performance.power_strategy"
 
     /** Facts were read on a worker. Re-read preferences at the decision, never store a derived default. */
     fun autoStart(context: Context, profile: DeviceProfile): Boolean {
@@ -23,6 +25,15 @@ object PerformancePolicy {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val light = PerformanceRules.lightweight(p.tier, prefs.getString(MODE, null), hot(context))
         env.putAll(PerformanceRules.engineEnvironment(p, light, env, PerformanceRules.manifestEnvironment(argv, launchEnv)))
+
+        // 策略化省电：读取总开关并把档位置入进程内单例（PhoneCore 的硬闸门据此收紧重工具预算），
+        // 同时把软提示载体注入引擎环境。显式 env 优先，不在调用方已给值时覆盖。
+        // 与 NODE_OPTIONS / UV_THREADPOOL_SIZE 一样在引擎启动时读取，切换开关后需重启本机引擎生效。
+        val strategy = prefs.getBoolean(POWER_STRATEGY, false)
+        PowerPolicy.setStrategyEnabled(strategy)
+        for ((key, value) in PowerPolicy.powerEnvironment(strategy, light)) {
+            if (!env.containsKey(key)) env[key] = value
+        }
     }
 
     private fun hot(context: Context): Boolean = ThermalRuntime.lightweight ?: if (Build.VERSION.SDK_INT < 29) false else runCatching {

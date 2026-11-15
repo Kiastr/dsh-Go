@@ -1,5 +1,6 @@
 package io.github.ccch1mneyyy.dsh_app.phone
 
+import io.github.ccch1mneyyy.dsh_app.performance.PowerPolicy
 import io.github.ccch1mneyyy.dsh_app.phone.background.Reasons
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneTaskTrace
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillReplaySelections
@@ -266,8 +267,14 @@ class PhoneCore(
                         executionWorker: SerialWorker = worker, remainingMs: () -> Long = { MAX_TOTAL_MS }): ToolOutput {
         if (prepared?.replay == null) rejection(name)?.let { return it }
         val remaining = remainingMs()
+        // 省电策略硬闸门：开启时把 ANDROID_SHELL / COLLECT 这类重工具预算从 120 s 收到 30 s。
+        // 判据用「原预算超过上限」，与 budgetMs 单点真源一致，不重复维护一份工具清单。
+        val baseBudget = budgetMs(name)
+        val budget = PowerPolicy.toolBudgetMs(
+            baseBudget, baseBudget > PowerPolicy.LIGHT_TOOL_BUDGET_MS, PowerPolicy.strategyEnabled,
+        )
         val outcome = if (remaining <= 0) SerialWorker.Outcome.TimedOut(queued = true) else
-            executionWorker.run(budgetMs(name), remaining, owner = tasks) { scope ->
+            executionWorker.run(budget, remaining, owner = tasks) { scope ->
                 if (remainingMs() <= 0) throw InterruptedException()
                 execute(name, args, scope, callOwner, prepared)
             }

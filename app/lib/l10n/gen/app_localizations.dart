@@ -18566,6 +18566,42 @@ abstract class L10n {
   /// **'刷新率 高刷 120Hz 90Hz 流畅'**
   String get searchKwRefreshRate;
 
+  /// No description provided for @searchKwPowerStrategy.
+  ///
+  /// In zh, this message translates to:
+  /// **'省电 省电策略 耗电 电量 续航 工具预算'**
+  String get searchKwPowerStrategy;
+
+  /// No description provided for @powerStrategyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'策略化省电'**
+  String get powerStrategyTitle;
+
+  /// No description provided for @powerStrategySwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用省电策略'**
+  String get powerStrategySwitch;
+
+  /// No description provided for @powerStrategyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只收紧重工具预算，攒块队列尚未接入'**
+  String get powerStrategyHint;
+
+  /// No description provided for @powerStrategyStatusOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开启：重工具预算上限 30 秒'**
+  String get powerStrategyStatusOn;
+
+  /// No description provided for @powerStrategyFooter.
+  ///
+  /// In zh, this message translates to:
+  /// **'不改确认方式、交还用户与应用名单；切换后需重启本机引擎生效。'**
+  String get powerStrategyFooter;
+
   /// No description provided for @petActionSending.
   ///
   /// In zh, this message translates to:
