@@ -74,7 +74,7 @@ class WakeHoldGateTest {
             { it.set(PHONE_TASK, true) },
             { it.set(PHONE_TASK, false) },
             { it.clear() },
-            { _ -> Unit },
+            { },
         )
         var checked = 0
         fun walk(g: WakeHoldGate, depth: Int) {
