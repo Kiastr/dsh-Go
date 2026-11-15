@@ -1,0 +1,246 @@
+# 手动发版：构建 arm64 正式包并发布到 GitHub Release。
+#
+# 与 ci.yml 分工：CI 只跑测试；这里跑真正的 runtime + APK 构建（40 分钟量级），
+# 只在人来点的时候跑，不挂 push 触发。
+#
+# 需要 4 个仓库 secret（Settings → Secrets and variables → Actions）：
+#   ANDROID_KEYSTORE_BASE64     .jks 的 base64
+#   ANDROID_KEYSTORE_PASSWORD   仓库口令
+#   ANDROID_KEY_ALIAS           key 别名
+#   ANDROID_KEY_PASSWORD        key 口令
+# 缺任何一个就直接失败，绝不回落到 debug key 发版（debug key 每台 runner 都不同，
+# 下一版就装不上上一版）。
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本名，留空取 app/pubspec.yaml 的 version'
+        required: false
+        default: ''
+      tag:
+        description: 'Release tag，留空 = v<版本名>-kiastr.<run_number>'
+        required: false
+        default: ''
+      publish:
+        description: '创建 GitHub Release'
+        type: boolean
+        default: true
+      prerelease:
+        description: '标记为预发布'
+        type: boolean
+        default: true
+      unsigned:
+        description: '跳过发布密钥，用临时 debug 签名（仅验证链路，产物不可升级）'
+        type: boolean
+        default: false
+      notes:
+        description: '更新说明（Markdown），留空自动生成'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  NODE_VERSION: 24.22.1
+  GRADLE_VERSION: 9.3.1
+  TZ: Asia/Shanghai
+  # 境外 runner 上阿里云镜像慢且不稳（与 ci.yml 的 Android JVM job 一致）。
+  DSH_MAVEN_MIRRORS: 0
+
+jobs:
+  apk:
+    name: Build arm64 release APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # runtime 构建要解包 base rootfs、装两套 node_modules，再压 xz；runner 的
+      # 14 GB 余量偏紧。这几项是镜像里用不到的大件，删掉不碰工具缓存。
+      - name: Free disk space
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/share/swift
+          df -h / | tail -1
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # compileSdk 与 NDK 都从 Flutter 自己的 FlutterExtension 读，和 tooling/setup-toolchain.sh 同一套规则：
+      # 写死版本号会在 Flutter 升级后对不上（AGP 报 NDK not configured，tawcroot 报 Pkg.Revision 不匹配）。
+      - name: Android SDK and NDK
+        run: |
+          set -euo pipefail
+          ext=$(find "$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main" -name 'FlutterExtension.*' -print -quit)
+          sdk=$(grep -oE 'compileSdkVersion[^0-9]*[0-9]+' "$ext" | grep -oE '[0-9]+$' | head -1)
+          ndk=$(grep -oE 'ndkVersion[^"]*"[0-9.]+"' "$ext" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          echo "Flutter wants compileSdk=$sdk ndk=$ndk"
+          sdkmanager=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
+          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$sdkmanager" --install "platforms;android-$sdk" "ndk;$ndk" "build-tools;36.0.0"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      # gradlew 与 gradle-wrapper.jar 在 app/android/.gitignore 里（上游用系统 gradle 跑测试），
+      # 但 `flutter build apk` 走的是 ./gradlew，所以这里按同一 Gradle 版本现生成一份。
+      - name: Gradle wrapper
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          (cd "$tmp" && gradle wrapper --gradle-version "$GRADLE_VERSION" --distribution-type bin -q)
+          cp -r "$tmp/gradlew" "$tmp/gradlew.bat" "$tmp/gradle" app/android/
+          chmod +x app/android/gradlew
+          cat app/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Restore the runtime download cache
+        id: rtcache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/.cache
+          key: runtime-cache-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**', 'runtime/patches/**') }}
+
+      - name: Build the bundled runtime
+        run: bash runtime/build-runtime.sh arm64-v8a
+
+      # 装完就存：后面的步骤失败或超时也不该丢掉已经下好的几百 MB。
+      - name: Save the runtime download cache
+        if: steps.rtcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/.cache
+          key: ${{ steps.rtcache.outputs.cache-primary-key }}
+
+      # 单独跑一次，好在 40 分钟的构建前就暴露 NDK 问题；build-apk.sh 里还会再确认一次。
+      - name: Build libtawcroot.so
+        run: python3 runtime/tawcroot/build.py
+
+      - name: Write the release signing config
+        if: inputs.unsigned == false
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=''
+          for name in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::缺少仓库 secret:$missing"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > app/android/dsh-release.jks
+          umask 077
+          {
+            echo "storeFile=$GITHUB_WORKSPACE/app/android/dsh-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > app/android/key.properties
+
+      - name: Flutter dependencies
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+
+      - name: Build the APK
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${VERSION:-}" ]; then args+=(--build-name "$VERSION"); fi
+          tooling/build-apk.sh "${args[@]}"
+
+      - name: Verify the signature
+        run: |
+          set -euo pipefail
+          apk=app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          signer=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$signer" verify -v --min-sdk-version 21 --print-certs "$apk" | tee /tmp/verify.txt
+          if grep -q 'CN=Android Debug' /tmp/verify.txt; then
+            echo "::error::APK 用的是 debug key，不能发版"
+            exit 1
+          fi
+          echo '--- 证书 SHA-256（每版必须一致，换钥匙等于换签名）---'
+          grep -i 'SHA-256' /tmp/verify.txt
+
+      # release_assets.py 会核对 ABI、跑 check_apk_jni、按 dsh-go-<版本>-arm64.apk 命名并写 SHA256SUMS。
+      # update.json 不发：它里面的 page/tag 指向本仓库，而 App 的更新检查查的是上游仓库，发了只会误导。
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          python3 tooling/release_assets.py --delta-from 0
+          rm -f dist/update.json
+          ls -l dist/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dsh-go-apk
+          path: dist/*
+          retention-days: 14
+
+      - name: Publish the release
+        if: inputs.unsigned == false && inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ inputs.tag }}
+          VERSION_INPUT: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          NOTES: ${{ inputs.notes }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          version=${VERSION_INPUT:-$(sed -n 's/^version:[[:space:]]*\([^+[:space:]]*\).*/\1/p' app/pubspec.yaml)}
+          tag=${TAG_INPUT:-v$version-kiastr.$RUN_NUMBER}
+          if [ -n "${NOTES:-}" ]; then
+            printf '%s\n' "$NOTES" > /tmp/notes.md
+          else
+            {
+              echo "## DSH Go $version（个人构建 · 省电分支）"
+              echo
+              echo "内置 runtime 与 APK 全部由本仓库的 GitHub Actions 从当前 \`main\`（\`${GITHUB_SHA:0:8}\`）构建。"
+              echo
+              echo '本版包含的改动：'
+              echo
+              echo '- 后台不再常驻 `PARTIAL_WAKE_LOCK`：引擎空闲时允许 CPU 进 Doze，只有安装解压与手机操控任务按原因持锁'
+              echo '- 状态轮询 2s → 5s，任务结束与无障碍断连时补一次立即检查'
+              echo '- 设置 → 性能 → 策略化省电：开关打开后重工具预算 120s → 30s'
+              echo
+              echo '**签名与升级**：本包用个人发布密钥签名，与上游官方包不同。从官方版换过来需要卸载一次（会清空对话、Linux 环境与 Keystore 里的 API Key）；此后每版都能直接覆盖升级。'
+              echo
+              echo '校验和见 `SHA256SUMS`。'
+            } > /tmp/notes.md
+          fi
+          args=(--title "DSH Go $version（省电分支 · 构建 $RUN_NUMBER）" --notes-file /tmp/notes.md)
+          if [ "$PRERELEASE" = "true" ]; then args+=(--prerelease); fi
+          gh release create "$tag" dist/*.apk dist/SHA256SUMS "${args[@]}"
+          echo "release: $tag"
