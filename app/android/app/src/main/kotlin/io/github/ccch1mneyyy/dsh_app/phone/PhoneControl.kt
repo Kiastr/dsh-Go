@@ -309,6 +309,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         if (!state.active || state.paused || state.stopped) shell.cancel(state.id)
         preview.refresh()
         prompts.check()
+        syncWakeHold()
         val record = sessions.all().firstOrNull { it.tasks === task } ?: return
         if (!state.active) sessions.onInactive(record, state)
         updateTaskUi(task, state)
@@ -321,6 +322,9 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     // Only the process-lifetime ticker capture lane reads or increments this value.
     private var statusRevision = 0L
     @Volatile private var keptTask = 0L
+    /** 当前是否按任务原因持有唤醒锁（只在 [syncWakeHold] 里翻转）。 */
+    @Volatile private var wakeHeld = false
+    private val wakeHoldLock = Any()
     private var screenReceiver: BroadcastReceiver? = null
     private val sinks = CopyOnWriteArraySet<(Map<String, Any?>) -> Unit>()
     val background: BackgroundControl = BackgroundControl.get(app)
@@ -357,7 +361,8 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         }
         (app as? Application)?.let { AppVisibility.register(it) }
         tasks.addListener { onTask(it) }
-        ticker.scheduleWithFixedDelay({ tick() }, 2, 2, TimeUnit.SECONDS)
+        // 5 s 一轮：空闲唤醒降 60%（原 2 s）。状态与权限恢复由事件点补偿，见 tick()。
+        ticker.scheduleWithFixedDelay({ tick() }, 5, 5, TimeUnit.SECONDS)
         // The app's start: a force stop took the accessibility service out of the settings.
         cleanupIo.execute { taskJournal.load(); emitStatus() }
         ticker.execute(::keep)
@@ -509,7 +514,28 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         stopBridge()
         core.worker.retire()
         tasks.endTask()
+        // 引擎要走了：唤醒锁一并交还，别等 onDestroy。
+        wakeHeld = false
+        DshService.phoneTask(app, false)
         emitStatus()
+    }
+
+    /**
+     * 任一任务（含后台会话）在跑时按住 CPU，全部结束立刻交还系统。
+     * 幂等：只有「有没有任务」这个状态真的翻转时才发一次意图。
+     *
+     * 快照在锁外读：本方法由任务监听器（可能已持有 PhoneTasks 锁）与 ticker 两路调用，
+     * 若在持锁状态下再读快照会形成锁序反转。
+     */
+    private fun syncWakeHold() {
+        val active = tasks.snapshot().active || sessions.all().any { it.tasks.snapshot().active }
+        val flipped = synchronized(wakeHoldLock) {
+            if (active == wakeHeld) false else { wakeHeld = active; true }
+        }
+        if (!flipped) return
+        DshService.phoneTask(app, active)
+        // 任务刚结束：立刻补一次 idle 收尾与状态推送，不必等下一轮 5 s 轮询。
+        if (!active) ticker.execute(::tick)
     }
 
     private fun stopBridge(stopTransport: Boolean = true) {
@@ -611,6 +637,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         preview.refresh() // Clear local pixels before endTask can enter blocking release IPC.
         skillLifecycle.changed(s)
         prompts.check()
+        syncWakeHold()
         val record = sessions.all().firstOrNull { it.tasks === tasks }
         if (!s.active && record != null) sessions.onInactive(record, s)
         updateTaskUi(tasks, s)
@@ -927,7 +954,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         }
     }
 
-    /** Every 2 s: end idle tasks; 自动恢复无障碍; push status changes we can't observe (accessibility connecting). */
+    /** Every 5 s: end idle tasks; 自动恢复无障碍; push status changes we can't observe (accessibility connecting). */
     private fun tick() {
         try {
             sessions.all().forEach { it.tasks.expireIdle() }
@@ -944,7 +971,11 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
 
     override fun onStopAllRequested(reason: String, source: PhoneTasks.StopSource) { shell.cancelAll(); selfCheck.stop(); sessions.stopAll(reason, source) }
 
-    override fun onAccessibilityChanged(connected: Boolean) = emitStatus()
+    override fun onAccessibilityChanged(connected: Boolean) {
+        emitStatus()
+        // 刚断开：立刻尝试自动恢复，不等下一轮 5 s 轮询（原来 2 s 轮询能更快兜住）。
+        if (!connected) ticker.execute(::keep)
+    }
 
     // ── PhoneEnv ────────────────────────────────────────────────────────────────────
 
