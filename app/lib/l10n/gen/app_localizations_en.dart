@@ -10575,6 +10575,29 @@ class L10nEn extends L10n {
   String get searchKwRefreshRate => 'refresh rate high refresh 120Hz 90Hz smooth';
 
   @override
+  String get powerStrategyTitle => 'Power strategy';
+
+  @override
+  String get powerStrategySwitch => 'Enable power strategy';
+
+  @override
+  String get powerStrategyHint => 'Caps heavy tool budgets; offline batching is a follow-up';
+
+  @override
+  String get powerStrategyStatusTitle => 'Current behavior';
+
+  @override
+  String get powerStrategyStatusOn =>
+      'On: heavy tool budgets are capped at 30s; chat and phone control still run immediately';
+
+  @override
+  String get powerStrategyStatusOff => 'Off: every task runs immediately with unchanged tool budgets';
+
+  @override
+  String get powerStrategyFooter =>
+      'Only heavy tool budget caps and power decision rules are wired up today; a batching queue and reconnect flush are not yet connected. Confirmation, hand-back and app lists are untouched. Restart the local engine after switching.';
+
+  @override
   String get petActionSending => 'Sending…';
 
   @override

@@ -83,6 +83,29 @@ class PerformancePage extends ConsumerWidget {
             ),
           ],
         ),
+        // 策略化省电单独成组，不与「自动/完整/轻量」三档、刷新率、界面效果混在一起。
+        // footer 是 app 内引导：说清它做什么、不做什么、何时生效，避免「点了没反应」。
+        SettingsSection(
+          title: l10n.powerStrategyTitle,
+          footer: Text(l10n.powerStrategyFooter),
+          children: [
+            SettingsSwitchTile(
+              key: const ValueKey('performance-power-strategy'),
+              title: l10n.powerStrategySwitch,
+              subtitle: l10n.powerStrategyHint,
+              value: prefs.powerStrategy,
+              onChanged: (value) => unawaited(notifier.setPowerStrategy(value)),
+            ),
+            SettingsTile(
+              key: const ValueKey('performance-power-strategy-status'),
+              title: l10n.powerStrategyStatusTitle,
+              subtitle: prefs.powerStrategy
+                  ? l10n.powerStrategyStatusOn
+                  : l10n.powerStrategyStatusOff,
+              chevron: false,
+            ),
+          ],
+        ),
         SettingsSection(
           title: l10n.performanceEffects,
           children: [

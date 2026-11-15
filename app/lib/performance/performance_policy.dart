@@ -62,6 +62,8 @@ class PerformancePrefs {
     this.animations,
     this.fluid,
     this.refreshRate = RefreshRateMode.auto,
+    // 策略化省电总开关，默认关（可随时回退到原有行为）。持久化见 performance_state.dart。
+    this.powerStrategy = false,
     this.loaded = false,
   });
 
@@ -72,6 +74,10 @@ class PerformancePrefs {
   /// 灵动动效(见 `AppMotion.fluid`)。
   final bool? fluid;
   final RefreshRateMode refreshRate;
+
+  /// 策略化省电：按供电 / 网络 / 主机决定后台任务是否攒块、重工具预算是否收紧。
+  /// 只影响「何时、何地、做多大」，绝不改三档确认、交还用户、应用名单与打码规则。
+  final bool powerStrategy;
   final bool loaded;
 
   PerformancePrefs copyWith({
@@ -80,6 +86,7 @@ class PerformancePrefs {
     bool? animations,
     bool? fluid,
     RefreshRateMode? refreshRate,
+    bool? powerStrategy,
     bool? loaded,
     bool resetEffects = false,
   }) => PerformancePrefs(
@@ -88,6 +95,7 @@ class PerformancePrefs {
     animations: resetEffects ? null : animations ?? this.animations,
     fluid: resetEffects ? null : fluid ?? this.fluid,
     refreshRate: refreshRate ?? this.refreshRate,
+    powerStrategy: powerStrategy ?? this.powerStrategy,
     loaded: loaded ?? this.loaded,
   );
 }
