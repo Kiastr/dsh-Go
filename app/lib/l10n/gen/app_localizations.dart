@@ -18566,6 +18566,12 @@ abstract class L10n {
   /// **'刷新率 高刷 120Hz 90Hz 流畅'**
   String get searchKwRefreshRate;
 
+  /// No description provided for @searchKwPowerStrategy.
+  ///
+  /// In zh, this message translates to:
+  /// **'省电 省电策略 耗电 电量 续航 工具预算'**
+  String get searchKwPowerStrategy;
+
   /// No description provided for @powerStrategyTitle.
   ///
   /// In zh, this message translates to:
@@ -18581,31 +18587,19 @@ abstract class L10n {
   /// No description provided for @powerStrategyHint.
   ///
   /// In zh, this message translates to:
-  /// **'收紧重工具预算；离线攒块为后续接入项'**
+  /// **'只收紧重工具预算，攒块队列尚未接入'**
   String get powerStrategyHint;
-
-  /// No description provided for @powerStrategyStatusTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'当前行为'**
-  String get powerStrategyStatusTitle;
 
   /// No description provided for @powerStrategyStatusOn.
   ///
   /// In zh, this message translates to:
-  /// **'已开启：重工具预算收紧到 30 秒；对话与手机操控照常立即执行'**
+  /// **'已开启：重工具预算上限 30 秒'**
   String get powerStrategyStatusOn;
-
-  /// No description provided for @powerStrategyStatusOff.
-  ///
-  /// In zh, this message translates to:
-  /// **'未开启：所有任务立即执行，工具预算不变'**
-  String get powerStrategyStatusOff;
 
   /// No description provided for @powerStrategyFooter.
   ///
   /// In zh, this message translates to:
-  /// **'当前仅落地重工具预算收紧与省电判据；攒块队列、连线恢复 flush 等执行器尚未接入。不改确认方式、交还用户与应用名单；切换后需重启本机引擎生效。'**
+  /// **'不改确认方式、交还用户与应用名单；切换后需重启本机引擎生效。'**
   String get powerStrategyFooter;
 
   /// No description provided for @petActionSending.

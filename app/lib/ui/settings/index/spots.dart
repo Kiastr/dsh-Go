@@ -900,6 +900,12 @@ abstract final class Spots {
     keywords: (l) => l.searchKwFluidMotion,
     condition: SpotCondition.animationsOn,
   );
+  static final powerStrategy = SettingSpot(
+    'power-strategy',
+    page: SettingsPageId.performance,
+    title: (l) => l.powerStrategySwitch,
+    keywords: (l) => l.searchKwPowerStrategy,
+  );
 
   // 通知.
   static final notifyEnabled = SettingSpot(
@@ -1135,6 +1141,7 @@ final _rows = <SettingSpot>[
   Spots.blur,
   Spots.animations,
   Spots.fluidMotion,
+  Spots.powerStrategy,
   Spots.notifyEnabled,
   Spots.notifyDone,
   Spots.notifyFailed,

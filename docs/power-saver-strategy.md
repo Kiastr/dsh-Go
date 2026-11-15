@@ -12,7 +12,7 @@
 | 层 | 内容 | 状态 |
 |---|---|---|
 | L2 决策层 | `PowerPolicy`：门控信号、决策矩阵、护栏、有效 deadline、flush 判据 | ✅ 已落地，JVM 单测覆盖 |
-| 设置项 | 独立 `SettingsSection` + 开关 + 当前行为状态条 + 引导 footer | ✅ 已落地 |
+| 设置项 | 独立 `SettingsSection` + 开关（副标题随状态切换）+ 引导 footer；已注册 `Spots.powerStrategy`，可被设置搜索到 | ✅ 已落地 |
 | **硬闸门** | `PhoneCore.runCall`：开启时把重工具预算从 120 s 收到 30 s | ✅ **本次唯一真正生效的省电效果** |
 | 软提示载体 | `DSH_POWER_MODE` / `DSH_POWER_MAX_TOOL_MS` 注入引擎环境 | 🟡 只注入，引擎侧尚无消费点 |
 | 攒块执行器 | 落盘队列、`JobScheduler`、连线恢复 flush、打开 App 兜底 | ❌ 未接入 |
@@ -20,7 +20,7 @@
 
 **为什么先做到这一步**：按此前《省电策略全景》的 ROI 排序，攒块不是最短路径。先把「现成旋钮」收编（重工具预算）并让门控判据可以脱离 Android SDK 独立验证；执行器要动任务调度链路、依赖国产 ROM 的后台触发率，必须真机验证，单独开 PR 更稳妥。
 
-> ⚠️ 因此 **UI 文案不宣称攒块已生效**。若后续接入执行器，需同步修改 `parts/performance_*.arb` 里 7 个 key 并跑生成链（第三节）。
+> ⚠️ 因此 **UI 文案不宣称攒块已生效**。若后续接入执行器，需同步修改 `parts/performance_*.arb` 里 6 个 key 并跑生成链（第三节）。
 
 ---
 
@@ -87,7 +87,9 @@ PhoneCore.runCall() → PowerPolicy.toolBudgetMs(base, heavy, enabled)  ← 硬�
 | `app/lib/performance/performance_policy.dart` | 改 | `PerformancePrefs.powerStrategy` 字段 |
 | `app/lib/performance/performance_state.dart` | 改 | 持久化 / 读取 / 诊断输出 |
 | `app/lib/ui/settings/performance_page.dart` | 改 | 独立设置分组 + **app 内引导** |
-| `app/lib/l10n/parts/performance_zh.arb` / `_en.arb` | 改 | 7 个文案真源 |
+| `app/lib/ui/settings/index/spots.dart` | 改 | 注册 `Spots.powerStrategy`（仓库要求每个设置行都在索引里） |
+| `app/test/performance/performance_ui_test.dart` | 改 | 页面变高后的窗口高度与 pump 时序 |
+| `app/lib/l10n/parts/performance_zh.arb` / `_en.arb` | 改 | 6 个文案真源（含 1 个搜索关键词） |
 | `app/lib/l10n/app_zh.arb` / `app_en.arb` | 生成物 | 由生成器产出 |
 | `app/lib/l10n/gen/app_localizations*.dart` | 生成物 | 由 `flutter gen-l10n` 产出 |
 | `docs/power-saver-strategy.md` | 新增 | 本文档（README 侧） |
@@ -114,8 +116,9 @@ CI 的 Flutter shard 0 会执行 `python3 tool/l10n_merge.py` 后 `git diff --ex
 | 项 | 命令 / 方法 | 结果 |
 |---|---|---|
 | 决策层单测 | `K2JVMCompiler` 编译 `PowerPolicy.kt` + `PowerPolicyTest.kt` → `JUnitCore` | ✅ `OK (15 tests)`，含 31,104 条状态组合穷举 |
+| CI（GitHub Actions） | `Ci` workflow_dispatch，8 个 job | 🟡 见下表：analyze / l10n / Android JVM / Dart / Generated files 全过；Flutter 测试曝出 4 类真实回归，已修，待重跑 |
 | Kotlin 语法解析 | `K2JVMCompiler` 编译 3 个改动文件（无 Android SDK） | ✅ 693 条诊断中 647 条 `unresolved reference`、46 条连锁类型推断，**0 条语法错误** |
-| l10n 合法性 | `python3 app/tool/l10n_merge.py --check` | ✅ `70 parts, 7759 keys`（基线 7752，+7） |
+| l10n 合法性 | `python3 app/tool/l10n_merge.py --check` | ✅ `70 parts, 7758 keys`（基线 7752，+6） |
 | 生成器闭环 | 干净基线 `--no-gen` 重现远程 `app_*.arb`；改后 parts `--no-gen` 重现交付物 | ✅ 两次均**逐字节一致** |
 | gen 模板复现 | 用反推模板重建现有 22 个 performance getter | ✅ abstract / en / zh 三文件**逐字节 MATCH**；新增 7 个按同规则插入，diff 仅新增、无删除 |
 | 静态一致性 | key 对齐、调用点唯一、括号平衡、getter 唯一、文案与 parts 一致、凭据扫描 | ✅ 全部通过 |
@@ -124,7 +127,9 @@ CI 的 Flutter shard 0 会执行 `python3 tool/l10n_merge.py` 后 `git diff --ex
 
 **未运行 / 未覆盖（诚实边界）**
 
-- ❌ `flutter analyze` / `flutter test`：沙箱无 Flutter SDK，且内置 Dart 2.17 与项目 Dart 3 语法不匹配。
+- ✅ `flutter analyze` 与 `gen-l10n` 一致性：**已由 CI 的 Flutter shard 0 验证通过**（`Analyze, and generated localization matches its source` = success），证明手工复现的 `gen/*.dart` 与真实生成器逐字节一致。
+- ❌ `flutter test`：首轮 CI 曝出 4 类回归（320dp 溢出、fluid 时序、索引未注册、golden 变旧），已按上表修复；仍需在 CI 上复跑确认。
+- ❌ 本地 `flutter analyze` / `flutter test`：沙箱无 Flutter SDK，内置 Dart 2.17 与项目 Dart 3 语法不匹配。
 - ❌ APK 构建、真机、`batterystats` 功耗实测、端到端功能验证：沙箱无 Android SDK / NDK / 设备。
 - ❌ `git diff --exit-code -- lib/l10n` 的权威校验由 CI 完成；本地是用已验证模板复现 + 生成器闭环逼近。
 - ❌ 攒块队列、连线恢复 flush、引擎侧读取 `DSH_POWER_*` 的提示模板：尚未实现，**开关打开后这些不会生效**。

@@ -279,7 +279,8 @@ void main() {
     for (final language in [AppLanguage.zh, AppLanguage.en]) {
       for (final scale in [1.0, 2.0]) {
         testWidgets('performance choices fit 320dp ${brightness.name} ${language.name} at ${scale}x', (tester) async {
-          window(tester, width: 320, height: 1400, brightness: brightness, scale: scale);
+          // 策略化省电多了一组，2.0x 下整页更高；给足窗口高度，避免 ensureVisible 把行滚到标题栏下。
+          window(tester, width: 320, height: 1900, brightness: brightness, scale: scale);
           final c = await mount(tester, const PerformancePage(), language: language);
           await tester.pumpAndSettle();
           final widths = <double>[];
@@ -373,6 +374,7 @@ void main() {
       await tester.pumpAndSettle();
       final reset = find.byKey(const ValueKey('performance-reset-effects'));
       await tester.ensureVisible(reset);
+      await tester.pumpAndSettle();
       await tester.tap(reset);
       await tester.pumpAndSettle();
       expect(c.read(performancePrefsProvider).fluid, isNull);

@@ -21,11 +21,10 @@
   "performanceRefreshSystem": "System",
   "performanceRefreshHint": "Auto: fastest while drawing, handed back when still; System: the system decides.",
   "searchKwRefreshRate": "refresh rate high refresh 120Hz 90Hz smooth",
+  "searchKwPowerStrategy": "power saver power saving battery drain endurance tool budget",
   "powerStrategyTitle": "Power strategy",
   "powerStrategySwitch": "Enable power strategy",
-  "powerStrategyHint": "Caps heavy tool budgets; offline batching is a follow-up",
-  "powerStrategyStatusTitle": "Current behavior",
-  "powerStrategyStatusOn": "On: heavy tool budgets are capped at 30s; chat and phone control still run immediately",
-  "powerStrategyStatusOff": "Off: every task runs immediately with unchanged tool budgets",
-  "powerStrategyFooter": "Only heavy tool budget caps and power decision rules are wired up today; a batching queue and reconnect flush are not yet connected. Confirmation, hand-back and app lists are untouched. Restart the local engine after switching."
+  "powerStrategyHint": "Only caps heavy tool budgets; batching is not wired yet",
+  "powerStrategyStatusOn": "On: heavy tools are capped at 30s",
+  "powerStrategyFooter": "Confirmation, hand-back and app lists stay as they are. Restart the local engine after switching."
 }
