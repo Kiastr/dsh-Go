@@ -26,6 +26,9 @@ import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 class DshService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** 谁需要 CPU 常醒。引擎空闲时不持锁，让系统进入 Doze；见 [WakeHoldGate]。 */
+    private val wakeGate = WakeHoldGate()
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var networkWatch: NetworkAccess.Watch? = null
     private var installSink: RuntimeController.EventSink? = null
@@ -45,7 +48,7 @@ class DshService : Service() {
                 // The last unpack's "ready" / "stopped" is old news now.
                 (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(INSTALL_ALERT_ID)
                 foreground(buildInstallNotification(this, installUpgrade, installPercent))
-                acquireWakeLock()
+                setWakeReason(WakeHoldGate.Reason.INSTALL, true)
                 if (installSink == null) {
                     val sink = RuntimeController.EventSink { event ->
                         if (event["type"] == "progress") {
@@ -66,6 +69,8 @@ class DshService : Service() {
             ACTION_INSTALL_DONE -> {
                 installSink?.let { controller.removeSink(it) }
                 installSink = null
+                // Unpacking is over: the CPU no longer needs to stay up for it.
+                setWakeReason(WakeHoldGate.Reason.INSTALL, false)
                 if (controller.phase != RuntimeController.Phase.STARTING && controller.phase != RuntimeController.Phase.RUNNING) {
                     running = false
                     stopForegroundCompat()
@@ -78,6 +83,10 @@ class DshService : Service() {
                 // l10n:keep agent stop reason
                 if (taskId != null) PhoneControl.get(this).stopShownTask("用户在通知里停止", taskId)
             }
+            ACTION_PHONE_HOLD, ACTION_PHONE_RELEASE -> {
+                // 手机操控任务开始 / 结束（含后台会话）。任务期间 CPU 常醒，结束后立刻交还系统。
+                setWakeReason(WakeHoldGate.Reason.PHONE_TASK, intent.action == ACTION_PHONE_HOLD)
+            }
             ACTION_STOP -> {
                 if (controller.phase != RuntimeController.Phase.INSTALLING) {
                     val expected = if (intent.hasExtra(EXTRA_STOP_GENERATION))
@@ -85,6 +94,8 @@ class DshService : Service() {
                     if (controller.stopProcess(expected)) {
                         running = false
                         stopForegroundCompat()
+                        // The engine is going away; nothing left to keep awake.
+                        releaseAllWakeLocks()
                     }
                 }
             }
@@ -93,7 +104,7 @@ class DshService : Service() {
                 val notification = buildNotification(this, controller)
                 foreground(notification)
                 running = true
-                acquireWakeLock()
+                // 刻意不 acquire：引擎挂在后台等消息时不需要 CPU 常醒，见 WakeHoldGate。
                 registerNetworkCallback(controller)
                 logBackgroundPolicy(controller)
                 controller.startProcess()
@@ -115,8 +126,7 @@ class DshService : Service() {
             runCatching { cm.unregisterNetworkCallback(callback) }
         }
         networkCallback = null
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
+        releaseAllWakeLocks()
         super.onDestroy()
     }
 
@@ -165,13 +175,39 @@ class DshService : Service() {
         controller.note(line)
     }
 
-    private fun acquireWakeLock() {
+    /**
+     * 按原因开关唤醒锁：真正的 acquire/release 只由 [WakeHoldGate] 决定，
+     * 这样「安装与任务重叠」时不会中途把锁放掉，重复事件也不会重复 acquire。
+     */
+    private fun setWakeReason(reason: WakeHoldGate.Reason, active: Boolean) {
+        when (wakeGate.set(reason, active)) {
+            WakeHoldGate.Change.ACQUIRE -> acquireWakeLock(
+                if (reason == WakeHoldGate.Reason.INSTALL) INSTALL_WAKE_LOCK_TIMEOUT_MS else WAKE_LOCK_TIMEOUT_MS,
+            )
+            WakeHoldGate.Change.RELEASE -> releaseWakeLock()
+            WakeHoldGate.Change.NONE -> Unit
+        }
+    }
+
+    private fun acquireWakeLock(timeoutMs: Long) {
         if (wakeLock?.isHeld == true) return
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dsh-app:runtime").apply {
             setReferenceCounted(false)
-            acquire()
+            // 兜底：某条路径忘了释放时，锁也会自己过期，不会整夜按住 CPU。
+            acquire(timeoutMs)
         }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+    }
+
+    /** 服务销毁 / 引擎停止：清空所有原因并放锁。 */
+    private fun releaseAllWakeLocks() {
+        wakeGate.clear()
+        releaseWakeLock()
     }
 
     private fun stopForegroundCompat() {
@@ -185,6 +221,12 @@ class DshService : Service() {
         const val ACTION_START = "io.github.ccch1mneyyy.dsh_app.START"
         const val ACTION_STOP = "io.github.ccch1mneyyy.dsh_app.STOP"
         const val ACTION_PHONE_STOP = "io.github.ccch1mneyyy.dsh_app.PHONE_STOP"
+        const val ACTION_PHONE_HOLD = "io.github.ccch1mneyyy.dsh_app.PHONE_HOLD"
+        const val ACTION_PHONE_RELEASE = "io.github.ccch1mneyyy.dsh_app.PHONE_RELEASE"
+        /** Leak guard for the partial wake lock: no reason may hold the CPU longer than this. */
+        private const val WAKE_LOCK_TIMEOUT_MS = 15L * 60_000L
+        /** Unpacking a runtime can take a while on slow storage; give it more room than a task. */
+        private const val INSTALL_WAKE_LOCK_TIMEOUT_MS = 30L * 60_000L
         private const val PHONE_TASK_SCHEME = "dsh-phone-task"
         private const val EXTRA_STOP_GENERATION = "stopGeneration"
 
@@ -192,6 +234,16 @@ class DshService : Service() {
          * PendingIntent: a newer task's button never rewrites the one still on screen. */
         fun phoneStopIntent(context: Context, taskId: Long): Intent = Intent(context, DshService::class.java)
             .setAction(ACTION_PHONE_STOP).setData(Uri.fromParts(PHONE_TASK_SCHEME, taskId.toString(), null))
+
+        /**
+         * 手机操控任务开始 / 结束时按住或交还 CPU。引擎没在跑时直接返回：没有服务就没有锁，
+         * 也不需要为此把服务拉起来（[ACTION_PHONE_HOLD] 不是启动命令）。
+         */
+        fun phoneTask(context: Context, active: Boolean) {
+            if (!isRunning) return
+            val action = if (active) ACTION_PHONE_HOLD else ACTION_PHONE_RELEASE
+            runCatching { context.startService(Intent(context, DshService::class.java).setAction(action)) }
+        }
 
         /** With [ACTION_INSTALL_DONE]: the unpack finished (true) or stopped. */
         const val EXTRA_INSTALL_OK = "ok"
