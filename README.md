@@ -32,7 +32,7 @@ DSH Go 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) �
 上游的耗电问题分两层：一是引擎挂在后台时**根本不让 CPU 睡**，二是重工具**一跑就是 120 秒**。本分支一层一处，各对应一个 PR。上游政策不接受外部 PR，所以改动留在这里自用。
 
 | # | 改动 | 层 | 行为差异 | 默认 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 1 | 唤醒锁收敛 | L0：CPU 能不能睡 | 引擎空闲不再持 `PARTIAL_WAKE_LOCK`；状态轮询 2 s → 5 s | ✅ 生效 |
 | 2 | 策略化省电 | L2：醒来后做多大 | 开启后重工具预算 120 s → 30 s | ⚪ 关闭 |
 
@@ -72,7 +72,7 @@ DSH Go 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) �
 ## 关掉与回退
 
 | 想做的 | 做法 |
-|---|---|
+| --- | --- |
 | 关掉策略化省电 | 设置 › 性能 › 策略化省电 → 关。重工具预算回到 120 s，需重启本机引擎 |
 | 只退掉 L2 | `git revert -m 1 69d0dad` |
 | 只退掉 L0 | `git revert -m 1 229fb26` |
@@ -82,7 +82,7 @@ DSH Go 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) �
 ## 验证到什么程度
 
 | 项 | 结果 |
-|---|---|
+| --- | --- |
 | CI（`changes`、`Flutter 0/1/2`、`Android JVM`、`CI OK`） | ✅ 全绿 |
 | JVM 单测 | ✅ `PowerPolicyTest` 15 例、`WakeHoldGateTest` 6 例（含 46,656 条事件序列穷举） |
 | golden 基准图 | ✅ 4 张随页面变化重出，目视核对中英文 / 明暗，无溢出 |
