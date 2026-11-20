@@ -13,7 +13,7 @@
 <h3 align="center">DSH Go · 省电分支</h3>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-Go">ccch1mneyyy/dsh-Go</a> 的个人 fork，在它之上收敛了两处耗电。
+  <a href="https://github.com/ccch1mneyyy/dsh-Go">ccch1mneyyy/dsh-Go</a> 的个人 fork（基线 **1.3.0**），在它之上收敛了两处耗电。上游 Android 版已发布；iOS 与鸿蒙版仍在开发，详见<a href="app/ios/README.md">iOS 工程</a>与<a href="docs/architecture.md">架构</a>。
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
   <a href="https://github.com/Kiastr/dsh-Go/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Kiastr/dsh-Go/actions/workflows/ci.yml/badge.svg?branch=main"></a>
 </p>
 
-> **这不是官方版本。** 本仓库只用于自用构建：不发布 APK、不接收 PR、不改名不换素材。
+> **这不是官方版本。** 本仓库用于自用构建，并发布个人签名 APK：不接收 PR、不改名不换素材。
 > 下载、问题反馈与署名规则请回[上游仓库](https://github.com/ccch1mneyyy/dsh-Go)。
 
 DSH Go 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Android 客户端，能在手机上直接跑引擎，也能遥控电脑上的 DSH。完整的产品介绍在[上游 README](https://github.com/ccch1mneyyy/dsh-Go#readme)，**这里只讲本分支的差异**。
@@ -101,7 +101,9 @@ adb shell dumpsys power | grep -i -E 'mWakefulness|WakeLock'
 
 ## 构建
 
-仓库不提供 APK。按上游的构建说明自己出包（Linux x86_64）：
+直接装[本分支 Releases](https://github.com/Kiastr/dsh-Go/releases)的个人签名包（arm64，含上面两处改动）。签名与官方包不同，**从官方版换过来需先卸载一次**（会清空对话、Linux 环境与 Keystore 里的 API Key），此后每版可直接覆盖升级。
+
+想自己出包（Linux x86_64）：
 
 ```bash
 git clone https://github.com/Kiastr/dsh-Go.git
@@ -113,9 +115,9 @@ bash runtime/build-runtime.sh arm64-v8a
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --keep-daemon
 ```
 
-产物是 `app/build/app/outputs/flutter-apk/app-arm64-release.apk`。未配置 `app/android/key.properties` 时用 debug 签名，**不能覆盖安装官方包**，请装在测试设备上。工具链细节、x86_64 与发布签名见[上游「从源码构建」](https://github.com/ccch1mneyyy/dsh-Go#从源码构建)。
+产物是 `app/build/app/outputs/flutter-apk/app-arm64-release.apk`。未配置 `app/android/key.properties` 时用 debug 签名，**不能覆盖安装已装的包**。工具链细节与 x86_64 见[上游「从源码构建」](https://github.com/ccch1mneyyy/dsh-Go#从源码构建)。
 
-只想要一个能用的 APK，装[上游 Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest) 的版本即可，只是不含上面两处改动。
+发布包由 `.github/workflows/release-apk.yml` 手动触发：Actions 构建内置 runtime 与 APK，验签后发到 Releases。
 
 ## 与上游同步
 
@@ -138,14 +140,15 @@ git push origin main
 
 | 路径 | 内容 |
 | --- | --- |
-| `app/` | Flutter 界面与 Android Kotlin 平台实现（本分支改动集中在 `performance/`、`runtime/`、`phone/`） |
+| `app/` | Flutter 界面、Android Kotlin 平台实现与开发中的 iOS Swift/WidgetKit 实现（本分支改动集中在 `performance/`、`runtime/`、`phone/`） |
 | `packages/dsh_client/` | DSH Web API 的 Dart 客户端 |
 | `packages/dsh_remote/` | DSH Remote 的 Dart 客户端 |
-| `runtime/` | Linux 运行时打包、引擎补丁与 App 桥接 |
+| `runtime/` | Linux 运行时打包、iOS 运行时特化、引擎补丁与 App 桥接 |
 | `sdk/plugin-kit/`、`examples/plugins/` | 插件工具包与示例 |
 | `docs/guide/`、`docs/plugins/`、`docs/pets/`、`docs/live2d/` | 用户指南、插件开发、宠物包与 Live2D 制作 |
 | `docs/power-saver-strategy.md` | **本分支的省电设计文档**（决策矩阵、护栏、接入链路、边界） |
-| `tooling/` | 工具链、APK 构建与诊断脚本 |
+| `docs/assets/` | 展示图、桌宠动图和社群二维码 |
+| `tooling/` | 工具链、Android APK/iOS 构建与诊断脚本 |
 | `services/`、`site/`、`infra/` | 配套分享服务、网站和部署材料 |
 
 ## 风险
@@ -162,7 +165,7 @@ DSH Go 是社区开发的非官方客户端，与 DeepSeek 无关联。AI 会出
 - 原作者：[ccch1mneyyy](https://github.com/ccch1mneyyy)
 - 修改：本分支的两处省电改动（见上）
 
-DSH Go 的名称、标识，以及 Deepy、鲸娘形象不在 AGPL 授权范围内，条款见 [ASSETS.md](ASSETS.md)。本分支不发布 APK、不改名、不换素材，仅作自用构建。
+DSH Go 的名称、标识，以及 Deepy、鲸娘形象不在 AGPL 授权范围内，条款见 [ASSETS.md](ASSETS.md)。本分支发布个人签名 APK、不改名、不换素材，仅作自用构建。
 
 <br>
 

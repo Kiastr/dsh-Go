@@ -62,6 +62,7 @@ class PerformancePrefs {
     this.animations,
     this.fluid,
     this.refreshRate = RefreshRateMode.auto,
+    this.frameCache = true,
     // 策略化省电总开关，默认关（可随时回退到原有行为）。持久化见 performance_state.dart。
     this.powerStrategy = false,
     this.loaded = false,
@@ -75,6 +76,10 @@ class PerformancePrefs {
   final bool? fluid;
   final RefreshRateMode refreshRate;
 
+  /// HarmonyOS's engine holds back one frame to smooth rate changes, at slightly more touch
+  /// delay. A switch because the difference can only be judged on a device.
+  final bool frameCache;
+
   /// 策略化省电：按供电 / 网络 / 主机决定后台任务是否攒块、重工具预算是否收紧。
   /// 只影响「何时、何地、做多大」，绝不改三档确认、交还用户、应用名单与打码规则。
   final bool powerStrategy;
@@ -86,6 +91,7 @@ class PerformancePrefs {
     bool? animations,
     bool? fluid,
     RefreshRateMode? refreshRate,
+    bool? frameCache,
     bool? powerStrategy,
     bool? loaded,
     bool resetEffects = false,
@@ -95,6 +101,7 @@ class PerformancePrefs {
     animations: resetEffects ? null : animations ?? this.animations,
     fluid: resetEffects ? null : fluid ?? this.fluid,
     refreshRate: refreshRate ?? this.refreshRate,
+    frameCache: frameCache ?? this.frameCache,
     powerStrategy: powerStrategy ?? this.powerStrategy,
     loaded: loaded ?? this.loaded,
   );

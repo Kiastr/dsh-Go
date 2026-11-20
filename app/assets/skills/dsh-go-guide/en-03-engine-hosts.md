@@ -2,12 +2,40 @@
 
 DSH can run right on this phone (this phone's engine), or on your computer or server with your phone connecting to it. Chats, workspaces and plugins belong to each host.
 
+## Running in the background on iPhone
+
+The local engine continues after leaving the app only while the system actually allows background execution. A playing, unsuspended picture-in-picture pet and an accepted continued-processing task are independent sources; ending one must not clear the other. An enabled switch, downloaded assets or a previously visible PiP does not prove current execution permission.
+
+Pet PiP is off by default and is not a prerequisite for phone control or pet selection; native phone tasks request system continued execution directly. If you explicitly enable PiP on the phone-control page and choose to keep it after tasks, it can also support ordinary local chats. Start a real PiP from the foreground before switching apps. If PiP closes, pauses, the device locks or audio is interrupted, and no other system execution grant remains, the engine pauses at its next tool boundary. iOS can still suspend or terminate the app; permanent uptime is not promised.
+
+PiP does not approve tools, disable safe mode or resume a phone task you manually paused. Return to the app for confirmations; restoring PiP does not approve a previous request. An engine on a remote host does not depend on the iPhone's PiP.
+
+## Linux and Python on iPhone
+
+<!-- nav: commonSettings,hubSettingsEngine -->
+`Settings › Local engine` · [Open](dshgo://open/engine)
+
+On iPhone, find the **Linux environment** section on that page.
+
+Install the optional environment, then restart the local engine. It uses Alpine. Installing the environment does not also install Python, git or rg. Commands have a different available set when Linux is missing or paused; check its actual status first.
+
+You can explicitly ask a local chat to install Python and pip:
+
+```sh
+apk add python3 py3-pip
+python3 --version
+python3 -m pip --version
+```
+
+Installing packages changes the Linux system and needs approval for that system write. Workspace-write permission does not replace it. Inspect the actual download, installation or execution error; do not reset, uninstall or change pairing settings to address a missing package. The Linux environment does not grant arbitrary access to other iOS apps.
+
 ## This phone or remote
 
-The first time you open the app, choose where DSH runs:
+The first time you open the app, choose how to use it:
 
 - **This phone**: installs the runtime on your phone; everything runs on this phone. The option shows the storage and memory it needs.
 - **Remote host**: uses DSH on your computer or server, with nothing installed on the phone. Recommended when the phone is short on memory or storage.
+- **Chat with characters**: the tavern only, with nothing installed; the app opens straight into the tavern, now and on later launches. Bringing chats over from DeepSeek starts here too.
 
 You can add DSH to this phone anytime: tap **Install runtime** on the engine page, or tap **This phone** when switching hosts. It starts once installed.
 
@@ -103,4 +131,28 @@ Connections automatically try LAN / P2P, then TURN, and finally Relay without a 
 
 **Compact history** is off by default. Supporting DSH Remote Hosts summarize historical tool arguments and output to reduce history transfer; message text, live replies, approvals and original Host records stay unchanged. Switch to another host (or this phone) and back, or restart the app, to apply. The current client and its automatic reconnects retain their original mode to avoid mixing cached history. After turning it off, select the host again and reopen the chat to load full history. Older Hosts continue sending full history; SSH is unaffected.
 
-DSH Remote connects to one host at a time; switching disconnects the previous one. Over DSH Remote: you can send images only, DSH Web doesn't open in the app, plugins can only be turned on or off, and DS Bot and chat log export aren't available.
+DSH Remote connects to one host at a time; switching disconnects the previous one. Over DSH Remote: you can send images only, plugins can only be turned on or off, and DS Bot and chat log export aren't available. Conversation backups use a separate session-transfer capability, not chat log export.
+
+## Conversation backups and restore
+
+<!-- nav: commonSettings,commonRemoteHost,backupTitle -->
+`Settings › Remote host › Conversation backups`
+
+Connect the source Remote host, select a workspace and either one conversation or **Entire workspace**, then tap **Back up to phone**. Switch to the target host, reopen this page, choose an existing target workspace and tap a local backup to restore. Export and import are checked independently against each host; older plugins without the respective capability are identified.
+
+Files and the catalog are encrypted in app-private storage, with the key protected by system secret storage. Uninstalling the app or clearing app data loses these backups. Only complete entries whose length and SHA-256 match are published; interrupting a batch keeps completed entries. Every restore creates a new full snapshot without merging later messages. Attachments, workspace source files and cross-session relationships are excluded.
+
+If a commit disconnects or its outcome is unclear, **Restores to check** keeps the pending record. Connect to the original target with the original Remote device identity and tap **Check**. The server retains results for about five minutes; if unknown, inspect the target first. The app never automatically imports again. After checking, you can acknowledge and clear the pending record; another import may create a duplicate. If history was restored but not attached to the workspace, find the shown conversation ID instead of importing again. Deleting a local backup never deletes conversations on hosts.
+
+Remote currently connects to one host at a time, so copying uses backup-to-phone followed by switching and restoring, rather than simultaneous host-to-host forwarding.
+
+## Open DSH Web on a Remote host
+
+<!-- nav: commonSettings,commonRemoteHost -->
+`Settings › Remote host`
+
+Once connected, **Open DSH Web** appears at the bottom of the page when supported. The host needs DS Harness Remote plugin 0.6.6 or later with DSH Web running; update its plugin and reconnect if the entry is missing. Android and iPhone use an embedded page without another sign-in.
+
+The first load obtains a one-use access grant over the current paired connection; ordinary refresh does not reuse it. Closing the page, disconnecting or switching hosts requests an end to this access. If that request cannot be delivered, access expires according to the server's validity period. Return to the host page and reopen if it expires. Self-hosted tunnel domains must be included in trusted app configuration beforehand.
+
+If the page says the service is busy, wait a little before opening it again. Reconnect the host for connection errors; the app does not repeatedly retry automatically.

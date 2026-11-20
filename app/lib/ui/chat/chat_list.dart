@@ -100,9 +100,13 @@ class ChatList extends ConsumerStatefulWidget {
     this.onQuote,
     this.onToast,
     this.onSwitchModel,
+    this.toTop,
   });
 
   final String sessionId;
+
+  /// Where the status bar's tap arrives (iOS).
+  final StatusBarTop? toTop;
 
   /// 顶栏占的高度(含状态栏)。
   final double topInset;
@@ -259,6 +263,35 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     _glide.start();
   }
 
+  void _goToTop() => unawaited(_runToTop());
+
+  /// The rows above are measured as they come into view, so the top can turn out nearer or further
+  /// than it first looked: stop on arriving, and go on if it's further. A finger takes over.
+  Future<void> _runToTop() async {
+    if (!_scroll.hasClients) return;
+    _stopGlide();
+    _pinned = false;
+    final position = _scroll.position;
+    final duration = AppMotion.of(context, const Duration(milliseconds: 600));
+    void stopAtTop() {
+      if (position.pixels < position.minScrollExtent) position.jumpTo(position.minScrollExtent);
+    }
+
+    _scroll.addListener(stopAtTop);
+    for (
+      var tries = 0;
+      tries < 3 && mounted && _fingers == 0 && position.pixels > position.minScrollExtent + 1;
+      tries++
+    ) {
+      if (duration == Duration.zero) {
+        position.jumpTo(position.minScrollExtent);
+      } else {
+        await position.animateTo(position.minScrollExtent, duration: duration, curve: AppMotion.glide);
+      }
+    }
+    if (mounted) _scroll.removeListener(stopAtTop);
+  }
+
   void _stopGlide() {
     _gliding = false;
     if (_glide.isActive) _glide.stop();
@@ -362,7 +395,14 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       ref.read(chatProvider(widget.sessionId).notifier).rejectQuestion(request);
 
   @override
+  void initState() {
+    super.initState();
+    widget.toTop?.onTap = _goToTop;
+  }
+
+  @override
   void dispose() {
+    if (widget.toTop?.onTap == _goToTop) widget.toTop?.onTap = null;
     // This conversation's calls leave the tool summary caches with it.
     forgetToolSummaries({
       for (final item in _builtState?.items ?? const <ChatItem>[])
@@ -378,6 +418,10 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   @override
   void didUpdateWidget(ChatList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.toTop != widget.toTop) {
+      if (oldWidget.toTop?.onTap == _goToTop) oldWidget.toTop?.onTap = null;
+      widget.toTop?.onTap = _goToTop;
+    }
     if (oldWidget.bottomInset != widget.bottomInset && _pinned) _follow();
     // Rows call the callbacks through `widget` when tapped; only whether
     // each is there shapes what they show.
@@ -1362,7 +1406,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       return null;
     }
     if (refused) {
-      if (code == 'CLIENT_UPGRADE_REQUIRED' && ref.read(activeHostProvider).kind == HostKind.local) {
+      if (code == 'CLIENT_UPGRADE_REQUIRED' && !wordsForIos && ref.read(activeHostProvider).kind == HostKind.local) {
         return (label: appL10n.updateCheck, onPressed: () => checkForUpdates(context, ref));
       }
       return widget.onSwitchModel == null ? null : (label: appL10n.chatSwitchModel, onPressed: _switchModel);
@@ -1401,6 +1445,34 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   }
 
   Widget _rowWidget(ChatRow row) {
+    final (seq, messageKey) = switch (row) {
+      AssistantRow(:final item) => (item.seq, item.rowKey),
+      ToolCallRow(:final item) => (item.seq, null),
+      ToolGroupRow(:final tools) => (tools.first.seq, null),
+      _ => (null, null),
+    };
+    // The stable message key carries its turn even in a partial history page.
+    final match = messageKey == null ? null : RegExp(r'^m([0-9]+)[.]').firstMatch(messageKey);
+    int? turn = match == null ? null : int.tryParse(match.group(1)!);
+    if (turn == null && seq != null) {
+      for (final trace in ref.read(chatProvider(widget.sessionId)).turns.reversed) {
+        if (seq > trace.startSeq && (trace.endSeq == null || seq < trace.endSeq!)) {
+          turn = trace.turn;
+          break;
+        }
+      }
+    }
+    final body = _rowContent(row);
+    if (turn == null) return body;
+    // A row must not start the global sessions watcher just to supply an image base.
+    final knownSessions = ref.exists(sessionsProvider) ? ref.read(sessionsProvider).value : null;
+    final cwd =
+        ref.read(chatProvider(widget.sessionId).notifier).header?.cwd ??
+        knownSessions?.where((session) => session.sessionId == widget.sessionId).firstOrNull?.cwd;
+    return MarkdownImageScope(sessionId: widget.sessionId, baseDir: cwd, turn: turn, child: body);
+  }
+
+  Widget _rowContent(ChatRow row) {
     return switch (row) {
       UserRow(:final item) when dshUiReplyChip(item.text) != null => DshUiReplyChip(label: dshUiReplyChip(item.text)!),
       UserRow(:final item) => UserBubble(
@@ -1409,6 +1481,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
             ? null
             : SentAttachments.echoed(sessionId: widget.sessionId, images: item.images, files: item.files),
         onEdit: widget.onEditPrompt == null ? null : () => _editPrompt(item),
+        onQuote: widget.onQuote == null ? null : _quote,
       ),
       PendingRow(:final prompt) => _pendingBubble(prompt),
       AssistantRow(:final item, :final showActions, :final footnote) => _reply(item, showActions, footnote),
@@ -1741,4 +1814,16 @@ class _TopBoundedScrollPosition extends ScrollPositionWithSingleContext {
     }
     return super.applyContentDimensions(minScrollExtent, maxScrollExtent);
   }
+}
+
+/// A tap on iOS's status bar: the framework's Scaffold asks the nearest primary scroll controller to
+/// go to 0, and this one hands that to the conversation, whose list has its own top.
+class StatusBarTop extends ScrollController {
+  VoidCallback? onTap;
+
+  @override
+  bool get hasClients => true;
+
+  @override
+  Future<void> animateTo(double offset, {required Duration duration, required Curve curve}) async => onTap?.call();
 }
